@@ -1,16 +1,33 @@
 (ns adapton.core-test
+  #?(:cljs (:require-macros [adapton.core-test :refer [benchmark]]))
   (:require [clojure.test :refer [deftest is run-tests]]
-            [adapton.core :as ad :refer-macros [adapt defavar avar avar-set! defamemo]]))
+            [adapton.core :as ad :refer [adapt defavar avar avar-set! defamemo]])
+  #?(:clj (:import [java.util Date])))
+
+(defn get-time []
+  #?(:clj (.getTime (Date.))
+     :cljs (.getTime (js/Date.))))
+
+(defmacro benchmark
+  [bindings expr iterations & {:keys [print-fn] :or {print-fn 'println}}]
+  (let [bs-str (pr-str bindings)
+        expr-str (pr-str expr)]
+    `(let ~bindings
+       (let [start# (get-time)
+             ret# (dotimes [_# ~iterations] ~expr)
+             end# (get-time)
+             elapsed# (- end# start#)]
+         (~print-fn (str ~bs-str ", " ~expr-str ", ") ~iterations " runs, " elapsed# " msecs")))))
 
 (deftest test-aref
   (let [r1 (ad/aref 8)
         r2 (ad/aref 10)
         a (ad/make-athunk nil)]
-    (set! (.-thunk a) (fn []
-                        (ad/+edge! a r1)
-                        (ad/+edge! a r2)
-                        (- (ad/compute r1)
-                           (ad/compute r2))))
+    (ad/set-thunk! a (fn []
+                       (ad/+edge! a r1)
+                       (ad/+edge! a r2)
+                       (- (ad/compute r1)
+                          (ad/compute r2))))
     (is (== -2 (ad/compute a)))
     (ad/aref-set! r1 2)
     (is (== -8 (ad/compute a)))))
@@ -141,13 +158,13 @@
                       [:li k d]
                       [:li k])))))
 
-  (simple-benchmark [] (count (hiccup data ["1"] 20)) 100)
-  (simple-benchmark [] (count (hiccup-memo data ["1"] 20)) 100)
-  (simple-benchmark [] (count (hiccup-amemo avar-data ["1"] 20)) 100)
+  (benchmark [] (count (hiccup data ["1"] 20)) 100)
+  (benchmark [] (count (hiccup-memo data ["1"] 20)) 100)
+  (benchmark [] (count (hiccup-amemo avar-data ["1"] 20)) 100)
 
-  (is (= (hiccup       data      ["1"] 20)
-         (hiccup-memo  data      ["1"] 20)
+  (is (= (hiccup data ["1"] 20)
+         (hiccup-memo data ["1"] 20)
          (hiccup-amemo avar-data ["1"] 20))))
 
 (defn -main [& args]
-  (run-tests))
+  (run-tests 'adapton.core-test))
